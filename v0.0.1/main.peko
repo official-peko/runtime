@@ -12,7 +12,7 @@
 // The naming standards for this file differ from the normal Peko naming standards 
 // since this file implements core functionality referenced from the compiler.
 
-import ffi;
+import ffi@"v0.0.1";
 
 platform windows {
     link objects::windows::rt as object;
