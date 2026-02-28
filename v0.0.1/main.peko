@@ -1,0 +1,666 @@
+//! This file implements base runtime functionality for Pekoscript.
+//  ________  _______   ___  __    ________
+// |\   __  \|\  ___ \ |\  \|\  \ |\   __  \
+// \ \  \|\  \ \   __/|\ \  \/  /|\ \  \|\  \
+//  \ \   ____\ \  \_|/_\ \   ___  \ \  \\\  \
+//   \ \  \___|\ \  \_|\ \ \  \\ \  \ \  \\\  \
+//    \ \__\    \ \_______\ \__\\ \__\ \_______\
+//     \|__|     \|_______|\|__| \|__|\|_______|
+//
+// Copyright 2025 Preston Brown. All Rights Reserved.
+
+// The naming standards for this file differ from the normal Peko naming standards 
+// since this file implements core functionality referenced from the compiler.
+
+import ffi;
+
+platform windows {
+    link objects::windows::rt as object;
+    link objects::windows::gc as object;
+}
+
+platform macos {
+    arch arm {
+        link objects::macos::arm::rt as object;
+        link objects::macos::arm::gc as object;
+    }
+
+    arch x86_64 {
+        link objects::macos::x86_64::rt as object;
+        link objects::macos::x86_64::gc as object;
+    }
+}
+
+platform linux {
+    arch arm {
+        link objects::linux::arm::rt as object;
+        link objects::linux::arm::gc as object;
+    }
+
+    arch x86_64 {
+        link objects::linux::x86_64::rt as object;
+        link objects::linux::x86_64::gc as object;
+    }
+}
+
+platform ios {
+    arch arm {
+        link objects::ios::arm::rt as object;
+        link objects::ios::arm::gc as object;
+    }
+
+    arch x86_64 {
+        link objects::ios::x86_64::rt as object;
+        link objects::ios::x86_64::gc as object;
+    }
+}
+
+platform android {
+    link objects::android::rt as object;
+    link objects::android::gc as object;
+}
+
+// ------------------------
+// ---  base functions  ---
+// ------------------------
+
+/// Stores the line of the current function's call point.
+[external] current_line: int = 0;
+
+/// Stores the line of the current function's call point.
+/// This variable is set automatically by the compiler.
+[external] current_file: string = "";
+
+// these functions are called by the main entrypoint
+[external notrack] fn start_gc(stack_top: opaque);
+[external notrack] fn end_gc();
+
+[external] fn gc_alloc(size: int) => opaque;
+
+/// Allocates an array of T with the provided length.
+///
+/// @param amount The length of the array to allocate
+fn Allocate<T>(amount: int) => T[] {
+    allocated_array: T[] = extern::gc_alloc(sizeof<T>() * amount);
+    
+    idx := 0;
+    while idx < amount {
+        allocated_array[idx] = Default;
+        idx += 1;
+    }
+
+    return allocated_array;
+}
+
+/// Exits the program with the provided exit code.
+/// @param exit_code The code to exit with
+[blockexit] fn Exit(exit_code: int) {
+    extern::exit(exit_code);
+}
+
+/// Exits the program with an error code and message.
+/// @param exit_message The message to error with
+[blockexit notrack] fn Exit(exit_message: string) {
+    extern::printf("Error on line %d in file '%s': %s\n", extern::current_line, extern::current_file, exit_message);
+    Exit(134);
+}
+
+platform windowsgui {
+    [external] fn windows_hide_console();
+    
+    /// Hides the console if running app on windows.
+    fn HideWindowsConsole() {
+        extern::windows_hide_console();
+    }
+}
+
+// ------------------------
+// ---  math functions  ---
+// ------------------------
+
+/// Gets the length of a string.
+/// 
+/// @param str the string to check the length of
+fn length(str: string) => int {
+    return extern::strlen(str);
+}
+
+/// Gets the length of an integer (if the integer was a string).
+/// 
+/// @param num the integer to check the length of
+fn length(num: int) => int {
+    len: int = num < 0;
+    if num < 0 {
+        num *= -1;
+    }
+
+    while num > 0 {
+        num /= 10;
+        len += 1;
+    }
+
+    return len;
+}
+
+/// Gets the length of a float (if the float is a string).
+/// 
+/// @param num the float to check the length of
+fn length(num: float) => int {
+    while num != (num as int) {
+        num *= 10;
+    }
+
+    return length(num as int)+1;
+}
+
+[external] fn powf(base: float, power: float) => float;
+
+/// Wraps C powf and is utilized by the compiler for ^ operations.
+/// 
+/// @param base the base to exponentiate
+/// @param power the power to exponentiate the base to
+fn Exponential(base: float, power: float) => float {
+    return extern::powf(base, power);
+}
+
+[external] fn fmodf(base: float, power: float) => float;
+
+/// Wraps C fmodf and is utilized by the compiler for % operations.
+/// 
+/// @param lhs the left hand side of the modulus
+/// @param rhs the right hand side of the modulus
+fn Modulus(lhs: float, rhs: float) => float {
+    return extern::fmodf(lhs, rhs);
+}
+
+// --------------------------
+// ---  string functions  ---
+// --------------------------
+
+/// Wraps C fmodf and is utilized by the compiler for % operations.
+/// 
+/// @param lhs the left hand side of the modulus
+/// @param rhs the right hand side of the modulus
+fn StringAdd(str1: string, str2: string) => string {
+    // don't allocate new memory if we don't need to
+    if str1 == "" {
+        return str2;
+    } else if str2 == "" {
+        return str1
+    } else if str1 == "" && str2 == "" {
+        return "";
+    }
+
+    // get the length of the two strings and allocate a string with that much space
+    str1_length := length(str1);
+    str2_length := length(str2);
+    allocated_addition := Allocate<char>(str1_length+str2_length+1);
+
+    // copy the two strings into the bigger adjoined strings
+    extern::memcpy(allocated_addition, str1, str1_length);
+    extern::memcpy(&allocated_addition[str1_length], str2, str2_length+1);
+
+    // set the null terminator and return the new string
+    allocated_addition[str1_length+str2_length] = 0;
+    return allocated_addition;
+}
+
+/// Creates a new string with the character at the provided index removed.
+/// 
+/// @param str the string to remove a character from
+/// @param index the index to remove the character from
+fn StringRemove(str: string, index: int) => string {
+    // if the index is outside the string bounds, don't remove anything
+    if index >= length(str) {
+        return str;
+    }
+    
+    // get the length of the string, and allocate the new string accordingly
+    str_length := length(str);
+    removed_string: string = Allocate<char>(str_length);
+    
+    // copy the string up to the remove index into the new string
+    extern::memcpy(removed_string, str, index);
+
+    // copy everything after the remove index into the new string
+    extern::memcpy(&removed_string[index], &str[index+1], str_length-(index+1));
+
+    // set the null terminator and return the new string
+    removed_string[str_length-1] = 0;
+    return removed_string;
+}
+
+/// Creates a new string with str2 inserted into str1 at the provided index.
+/// 
+/// @param str1 the string to be inserted into
+/// @param str2 the string to insert
+/// @param index the index to insert at
+fn StringInsert(str1: string, str2: string, index: int) => string {
+    // don't allocate new memory if we don't need to
+    if str1 == "" {
+        return str2;
+    } else if str2 == "" {
+        return str1
+    } else if str1 == "" && str2 == "" {
+        return "";
+    }
+
+    // get the lengths of both the strings and allocate the new string accordingly
+    str1_length := length(str1);
+    str2_length := length(str2);
+    new_string := Allocate<char>(str1_length+str2_length+1);
+
+    // copy the start of the first string
+    extern::memcpy(new_string, str1, index);
+
+    // then copy the entire second string
+    extern::memcpy(&new_string[index], str2, str2_length);
+
+    // lastly copy the rest of the first string
+    extern::memcpy(&new_string[index+str2_length], &str1[index], str1_length-index);
+    
+    // now, set the null terminator and return
+    new_string[str1_length+str2_length] = 0;
+    return new_string;
+}
+
+// -----------------------------
+// ---  type casting checks  ---
+// -----------------------------
+
+/// Returns true if the provided string can be casted to a boolean.
+fn StringIsBool(str: string) => bool {
+    return str == "true" || str == "false";
+}
+
+/// Returns true if the provided character is a number/digit between 0 and 9.
+fn IsDigit(ch: char) => bool {
+    return ch >= '0' && ch <= '9';
+}
+
+/// Returns true if the provided character is a valid alphabetical value.
+fn IsAlpha(ch: char) => bool {
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+}
+
+/// Returns true if the provided character is either a valid alphabet letter or digit.
+fn IsAlnum(ch: char) => bool {
+    return IsDigit(ch) || IsAlpha(ch);
+}
+
+/// Returns true if the provided string can be casted to a float.
+fn StringIsFloat(str: string) => bool {
+    // if the string is empty, it cannot be a number
+    if length(str) == 0 {
+        return false;
+    }
+    
+    // skip the preceeding '-'
+    idx: int = str[0] == '-';
+    
+    // loop through the string
+    str_length := length(str);
+    found_decimal := false;
+    
+    while idx < str_length {
+        if str[idx] == '.' {
+            // only allow one decimal point that is not at the end
+            if found_decimal || idx == str_length-1 {
+                return false;
+            }
+
+            found_decimal = true;
+        
+        // only allow digits (plus one '.')
+        } else if !IsDigit(str[idx]) {
+            return false;
+        }
+
+        idx += 1;
+    }
+
+    return true;
+}
+
+/// Returns true if the provided string can be casted to an integer.
+fn StringIsInt(str: string) => int {
+    // if the string is empty, it cannot be a number
+    if length(str) == 0 {
+        return false;
+    }
+    
+    // loop through the string
+    idx: int = str[0] == '-';
+    str_length := length(str);
+    
+    while idx < str_length {
+        // only allow digits
+        if !IsDigit(str[idx]) {
+            return false;
+        }
+
+        idx += 1;
+    }
+
+    return true;
+}
+
+/// Returns true if a string can be converted to a character.
+fn StringIsChar(str: string) => bool {
+    return length(str) == 1;
+}
+
+// ----------------------
+// ---  type casting  ---
+// ----------------------
+
+// note: these functions will all exit the program if the string input cannot be casted
+
+/// Converts the provided string to a boolean.
+fn StringToBool(str: string) => bool {
+    // type check
+    if !StringIsBool(str) {
+        extern::printf("Cannot convert '%s' to a bool\n", str);
+        Exit(134);
+    }
+
+    return str == "true";
+}
+
+/// Converts the provided string to an integer.
+fn StringToInt(str: string) => int {
+    // type check
+    if !StringIsInt(str) {
+        extern::printf("Cannot convert '%s' to an int\n", str);
+        Exit(134);
+    }
+
+    // stores the final value
+    int_value := 0;
+    
+    idx: int = str[0] == '-';
+    str_length := length(str);
+
+    // "loop" through the digits of the number
+    while idx < str_length {
+        chint := str[idx] as int;
+
+        // get the place value and multiply it by the digit at that place
+        int_value += 10^(str_length-idx-1)*(chint-48);
+        idx += 1;
+    }
+    
+    // if its negative, return negative
+    if str[0] == '-' {
+        return -int_value;
+    } else {
+        return int_value;
+    }
+}
+
+/// Converts the provided string to a float.
+fn StringToFloat(str: string) => float {
+    // type check
+    if !StringIsFloat(str) {
+        if StringIsInt(str) {
+            return StringToInt(str);
+        }
+
+        extern::printf("Cannot convert '%s' to a float\n", str);
+        Exit(134);
+    }
+    
+    str_length := length(str);
+
+    float_value: float = 0.0;
+
+    // find the index of the string where the decimal point is
+    decimal_idx := 0;
+    while decimal_idx < str_length && str[decimal_idx] != '.' {
+        decimal_idx += 1;
+    }
+    
+    // loop through until the decimal adding all the starting integers
+    idx: int = str[0] == '-';
+    while idx < decimal_idx {
+        chint := str[idx] as int;
+        float_value += 10^(decimal_idx-idx-1)*(chint-48);
+        idx += 1;
+    }
+
+    idx += 1;
+    while idx < str_length {
+        chint := str[idx] as int;
+        ch := (chint-48) as float;
+
+        // here, instead of the actual place value (10^-idx), we just shorthand
+        // by dividing by the place value
+        float_value += ch/(10^(idx-decimal_idx));
+        idx += 1;
+    }
+    
+    if str[0] == '-' {
+        return -float_value;
+    } else {
+        return float_value;
+    }
+}
+
+/// Converts the provided string to a character.
+fn StringToChar(str: string) => char {
+    if !StringIsChar(str) {
+        extern::printf("Cannot convert '%s' to a char\n", str);
+        Exit(134);
+    }
+
+    return str[0];
+}
+
+/// Converts the provided boolean to a string.
+fn BoolToString(boolean: bool) => string {
+    if boolean {
+        return "true";
+    } else {
+        return "false";
+    }
+}
+
+/// Converts the provided float to a string.
+fn FloatToString(number: float) => string {
+    // allocate the final string bytes
+    float_length := length(number);
+    float_string := Allocate<char>(float_length+1);
+
+    // add the '-' sign
+    if number < 0 {
+        float_string[0] = '-';
+        number *= -1;
+    }
+
+    // get the float number as an integer
+    number_int := number;
+    while number_int != (number_int as int) {
+        number_int *= 10;
+    }
+    
+    // mark the "index" of the number where the decimal lies
+    decimal_idx := length(number as int);
+    
+    // add the numbers after the decimal first
+    idx: int = float_length-1;
+    while idx > decimal_idx {
+        current_digit := number_int-(10*(number_int/10));
+        number_int /= 10;
+        float_string[idx] = current_digit+48;
+        idx -= 1;
+    }
+    
+    // then add the decimal
+    float_string[idx] = '.'
+    idx -= 1;
+
+    // then add the numbers after the decimal
+    while number_int > 0 {
+        current_digit := number_int-(10*(number_int/10));
+        number_int /= 10;
+        float_string[idx] = current_digit+48;
+        idx -= 1;
+    }
+
+    // lastly, null terminate and return
+    float_string[float_length] = 0;
+    return float_string;
+}
+
+/// Converts the provided integer into a string.
+fn IntToString(number: int) => string {
+    // allocate the final string
+    int_length := length(number);
+    int_string := Allocate<char>(int_length+1);
+
+    // add the '-' sign
+    if number < 0 {
+        int_string[0] = '-';
+        number *= -1;
+    }
+
+    // add all the digits to the string going from right to left
+    idx: int = int_length-1;
+    while number > 0 {
+        current_digit := number-(10*(number/10));
+        number /= 10;
+        int_string[idx] = current_digit+48;
+        idx -= 1;
+    }
+    int_string[int_length] = 0;
+
+    return int_string;
+}
+
+/// Converts the provided character to a string.
+fn CharToString(ch: char) => string {
+    char_string := Allocate<char>(2);
+    char_string[0] = ch;
+    char_string[1] = 0;
+
+    return char_string;
+}
+
+// -------------------------
+// ---  thread sleeping  ---
+// -------------------------
+
+/// Blocks the current thread for the provided amount of seconds.
+fn Sleep(seconds: int) {
+    extern::sleep(seconds*1000);
+}
+
+/// Blocks the current thread for the provided amount of milliseconds.
+fn SleepMS(milli_seconds: int) {
+    extern::sleep(milli_seconds);
+}
+
+// ------------------------
+// ---  file functions  ---
+// ------------------------
+
+// Note: These functions are just wrappers for their C implementations
+// Note: These files are implemented in the Runtime module rather than the fs module on purpose.
+//       This is to prevent users from utilizing the functions over the structures in the fs module.
+
+/// Returns true if the provided path exists in the filesystem.
+[external] fn runtime_file_exists(fpath: string) => bool;
+fn FileExists(fpath: string) => bool {
+    return extern::runtime_file_exists(fpath);
+}
+
+/// Returns the mode id of the file at the path.
+[external] fn runtime_get_file_mode(fpath: string) => int;
+fn GetFileMode(fpath: string) => int {
+    return extern::runtime_get_file_mode(fpath);
+}
+
+/// Returns true if the provided path is a directory.
+[external] fn runtime_file_is_directory(fpath: string) => bool;
+fn FileIsDir(fpath: string) => bool {
+    return extern::runtime_file_is_directory(fpath);
+}
+
+/// Returns true if the file at the path is a regular file.
+[external] fn runtime_file_is_regular(fpath: string) => bool;
+fn FileIsRegular(fpath: string) => bool {
+    return extern::runtime_file_is_regular(fpath);
+}
+
+/// Returns true if the file at the path is a symlink.
+[external] fn runtime_file_is_link(fpath: string) => bool;
+fn FileIsLink(fpath: string) => bool {
+    return extern::runtime_file_is_link(fpath);
+}
+
+/// Returns true if the file at the path is a block.
+[external] fn runtime_file_is_block(fpath: string) => bool;
+fn FileIsBlock(fpath: string) => bool {
+    return extern::runtime_file_is_block(fpath);
+}
+
+/// Attempts to create a directory at the provided path.
+/// Returns true if successful.
+[external] fn runtime_make_directory(dirpath: string) => bool;
+fn FileMkDir(fpath: string) => bool {
+    return extern::runtime_make_directory(fpath);
+}
+
+/// Attempts to change the mode of the file at the path.
+/// Returns true if successful.
+[external] fn runtime_file_chmod(fpath: string, mode: int) => bool;
+fn FileChMod(fpath: string, mode: int) => bool {
+    return extern::runtime_file_chmod(fpath, mode);
+}
+
+/// Reads the string contents of the file at the provided path.
+[external] fn runtime_read_file(fpath: string) => string;
+fn FileRead(fpath: string) => string {
+    return extern::runtime_read_file(fpath);
+}
+
+/// Attempts to write the provided string to the file at the provided path.
+/// Returns true if successful.
+[external] fn runtime_write_file(fpath: string, text: string) => bool;
+fn FileWrite(fpath: string, text: string) => bool {
+    return extern::runtime_write_file(fpath, text);
+}
+
+/// Attempts to append the provided string to the file at the provided path.
+/// Returns true if successful.
+[external] fn runtime_append_file(fpath: string, text: string) => bool;
+fn FileAppend(fpath: string, text: string) => bool {
+    return extern::runtime_append_file(fpath, text);
+}
+
+/// Attempts to remove the file at the provided path.
+/// Returns true if successful.
+[external] fn runtime_file_remove(fpath: string) => bool;
+fn FileRemove(fpath: string) => bool {
+    return extern::runtime_file_remove(fpath);
+}
+
+/// Returns how many children in the directory at the provided path.
+[external] fn get_directory_child_count(dirpath: string) => int;
+fn DirectoryGetChildrenCount(dirpath: string) => int {
+    return extern::get_directory_child_count(dirpath);
+}
+
+/// Lists all the files within the directory at the provided path.
+[external] fn list_directory(dirpath: string) => string[];
+fn DirectoryGetChildren(dirpath: string) => string[] {
+    return extern::list_directory(dirpath);
+}
+
+// This is more memory efficient than reading the file completely and checking against the buffer.
+/// Compares the buffered contents of a file to its current contents.
+/// This function checks the buffered contents as it reads the file.
+[external] fn check_file_change(og_length: int, og_text: string, fpath: string) => bool;
+fn FileContentCompare(fpath: string, og_text: string) => bool {
+    return extern::check_file_change(length(og_text), og_text, fpath);
+}
