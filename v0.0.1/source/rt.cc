@@ -13,341 +13,365 @@
 
 extern "C"
 {
-  void *gc_alloc(int size);
+    void *gc_alloc(int size);
 
-  bool runtime_file_exists(char *fpath) {
-    struct stat buffer;
-    return (stat(fpath, &buffer) == 0);
-  }
-
-  int runtime_get_file_mode(char *fpath)
-  {
-    if (!runtime_file_exists(fpath))
+    bool runtime_file_exists(char *fpath)
     {
-      return false;
+        struct stat buffer;
+        return (stat(fpath, &buffer) == 0);
     }
 
-    struct stat buf;
-    stat(fpath, &buf);
-
-    return buf.st_mode;
-  }
-
-  bool runtime_file_chmod(char *fpath, int mode)
-  {
-    if (!runtime_file_exists(fpath))
+    int runtime_get_file_mode(char *fpath)
     {
-      return false;
+        if (!runtime_file_exists(fpath))
+        {
+            return false;
+        }
+
+        struct stat buf;
+        stat(fpath, &buf);
+
+        return buf.st_mode;
     }
+
+    bool runtime_file_chmod(char *fpath, int mode)
+    {
+        if (!runtime_file_exists(fpath))
+        {
+            return false;
+        }
 
 #ifndef _WIN32
-    return chmod(fpath, mode);
+        return chmod(fpath, mode);
 #else
-    return false;
+        return false;
 #endif
-  }
-
-  bool runtime_file_is_directory(char *fpath)
-  {
-    if (!runtime_file_exists(fpath))
-    {
-      return false;
     }
 
-    struct stat buf;
-    stat(fpath, &buf);
-
-    return S_ISDIR(buf.st_mode);
-  }
-
-  bool runtime_file_is_regular(char *fpath)
-  {
-    if (!runtime_file_exists(fpath))
+    bool runtime_file_is_directory(char *fpath)
     {
-      return false;
+        if (!runtime_file_exists(fpath))
+        {
+            return false;
+        }
+
+        struct stat buf;
+        stat(fpath, &buf);
+
+        return S_ISDIR(buf.st_mode);
     }
 
-    struct stat buf;
-    stat(fpath, &buf);
-
-    return S_ISREG(buf.st_mode);
-  }
-
-  bool runtime_file_is_link(char *fpath)
-  {
-    if (!runtime_file_exists(fpath))
+    bool runtime_file_is_regular(char *fpath)
     {
-      return false;
+        if (!runtime_file_exists(fpath))
+        {
+            return false;
+        }
+
+        struct stat buf;
+        stat(fpath, &buf);
+
+        return S_ISREG(buf.st_mode);
     }
 
-    struct stat buf;
-    stat(fpath, &buf);
-
-    return S_ISLNK(buf.st_mode);
-  }
-
-  bool runtime_file_is_block(char *fpath)
-  {
-    if (!runtime_file_exists(fpath))
+    bool runtime_file_is_link(char *fpath)
     {
-      return false;
+        if (!runtime_file_exists(fpath))
+        {
+            return false;
+        }
+
+        struct stat buf;
+        stat(fpath, &buf);
+
+        return S_ISLNK(buf.st_mode);
     }
 
-    struct stat buf;
-    stat(fpath, &buf);
-
-    return S_ISBLK(buf.st_mode);
-  }
-
-  bool runtime_file_is_fifo_pipe(char *fpath)
-  {
-    if (!runtime_file_exists(fpath))
+    bool runtime_file_is_block(char *fpath)
     {
-      return false;
+        if (!runtime_file_exists(fpath))
+        {
+            return false;
+        }
+
+        struct stat buf;
+        stat(fpath, &buf);
+
+        return S_ISBLK(buf.st_mode);
     }
 
-    struct stat buf;
-    stat(fpath, &buf);
-
-    return S_ISFIFO(buf.st_mode);
-  }
-
-  bool check_file_change(int og_length, char *og_text, char *fpath)
-  {
-    FILE *fptr;
-    fptr = fopen(fpath, "r");
-
-    if (fptr == NULL)
+    bool runtime_file_is_fifo_pipe(char *fpath)
     {
-      return NULL;
+        if (!runtime_file_exists(fpath))
+        {
+            return false;
+        }
+
+        struct stat buf;
+        stat(fpath, &buf);
+
+        return S_ISFIFO(buf.st_mode);
     }
 
-    char i;
-    int size = 0;
-    while ((i = fgetc(fptr)) != EOF)
+    bool check_file_change(int og_length, char *og_text, char *fpath)
     {
-      if (size >= og_length)
-      {
-        return false;
-      }
+        FILE *fptr;
+#ifdef _WIN32
+        fopen_s(&fptr, fpath, "r");
+#else
+        fptr = fopen(fpath, "r");
+#endif
 
-      if (i != og_text[size])
-      {
-        return false;
-      }
+        if (fptr == NULL)
+        {
+            return false;
+        }
 
-      size += 1;
+        int i;
+        int size = 0;
+        while ((i = fgetc(fptr)) != EOF)
+        {
+            if (size >= og_length)
+            {
+                return false;
+            }
+
+            if (i != og_text[size])
+            {
+                return false;
+            }
+
+            size += 1;
+        }
+
+        fclose(fptr);
+
+        return size == og_length;
     }
 
-    fclose(fptr);
-
-    return size == og_length;
-  }
-
-  char *runtime_read_file(char *fpath)
-  {
-    FILE *fptr;
-    fptr = fopen(fpath, "r");
-
-    if (fptr == NULL)
+    char *runtime_read_file(char *fpath)
     {
-      return NULL;
+        FILE *fptr;
+#ifdef _WIN32
+        fopen_s(&fptr, fpath, "r");
+#else
+        fptr = fopen(fpath, "r");
+#endif
+
+        if (fptr == NULL)
+        {
+            return NULL;
+        }
+
+        int _;
+        int size = 0;
+        while ((_ = fgetc(fptr)) != EOF)
+        {
+            size += 1;
+        }
+
+        fclose(fptr);
+#ifdef _WIN32
+        fopen_s(&fptr, fpath, "r");
+#else
+        fptr = fopen(fpath, "r");
+#endif
+
+        char *string = (char *)gc_alloc(sizeof(char) * size);
+
+        int c;
+        int i = 0;
+        while ((c = fgetc(fptr)) != EOF)
+        {
+            string[i] = c;
+            i += 1;
+        }
+
+        fclose(fptr);
+
+        return string;
     }
 
-    char _;
-    int size = 0;
-    while ((_ = fgetc(fptr)) != EOF)
+    bool runtime_write_file(char *fpath, char *text)
     {
-      size += 1;
+        FILE *fptr;
+#ifdef _WIN32
+        fopen_s(&fptr, fpath, "w");
+#else
+        fptr = fopen(fpath, "w");
+#endif
+
+        if (fptr == NULL)
+        {
+            return false;
+        }
+
+        int push_result = fprintf(fptr, "%s", text);
+
+        fclose(fptr);
+
+        return push_result;
     }
 
-    fclose(fptr);
-    fptr = fopen(fpath, "r");
-
-    char *string = (char *)gc_alloc(sizeof(char) * size);
-
-    char c;
-    int i = 0;
-    while ((c = fgetc(fptr)) != EOF)
+    bool runtime_append_file(char *fpath, char *text)
     {
-      string[i] = c;
-      i += 1;
+        FILE *fptr;
+#ifdef _WIN32
+        fopen_s(&fptr, fpath, "a");
+#else
+        fptr = fopen(fpath, "a");
+#endif
+
+        if (fptr == NULL)
+        {
+            return false;
+        }
+
+        int push_result = fprintf(fptr, "%s", text);
+
+        fclose(fptr);
+
+        return push_result;
     }
 
-    fclose(fptr);
-
-    return string;
-  }
-
-  bool runtime_write_file(char *fpath, char *text)
-  {
-    FILE *fptr;
-    fptr = fopen(fpath, "w");
-    if (fptr == NULL)
+    bool runtime_make_directory(char *dirpath)
     {
-      return false;
-    }
-
-    int push_result = fprintf(fptr, "%s", text);
-
-    fclose(fptr);
-
-    return push_result;
-  }
-
-  bool runtime_append_file(char *fpath, char *text)
-  {
-    FILE *fptr;
-    fptr = fopen(fpath, "a");
-    if (fptr == NULL)
-    {
-      return false;
-    }
-
-    int push_result = fprintf(fptr, "%s", text);
-
-    fclose(fptr);
-
-    return push_result;
-  }
-
-  bool runtime_make_directory(char *dirpath)
-  {
 #ifndef _WIN32
-    return mkdir(dirpath, 0777);
+        return mkdir(dirpath, 0777);
 #else
-    CreateDirectory(dirpath, NULL);
+        CreateDirectory(dirpath, NULL);
+        return true;
 #endif
-  }
+    }
 
-  bool runtime_file_remove(char *fpath)
-  {
-    return remove(fpath) == 0;
-  }
+    bool runtime_file_remove(char *fpath)
+    {
+        return remove(fpath) == 0;
+    }
 
 #ifndef _WIN32
 #include <dirent.h>
-  int get_directory_child_count(char *dirpath)
-  {
-    int fileamount = 0;
-
-    struct dirent *de;
-
-    DIR *dr = opendir(dirpath);
-
-    if (dr == NULL)
+    int get_directory_child_count(char *dirpath)
     {
-      return 0;
+        int fileamount = 0;
+
+        struct dirent *de;
+
+        DIR *dr = opendir(dirpath);
+
+        if (dr == NULL)
+        {
+            return 0;
+        }
+
+        while ((de = readdir(dr)) != NULL)
+        {
+            if (strcmp(de->d_name, ".") != 0 && strcmp(de->d_name, "..") != 0)
+            {
+                fileamount += 1;
+            }
+        }
+
+        closedir(dr);
+
+        return fileamount;
     }
 
-    while ((de = readdir(dr)) != NULL)
+    char **list_directory(char *dirpath)
     {
-      if (strcmp(de->d_name, ".") != 0 && strcmp(de->d_name, "..") != 0)
-      {
-        fileamount += 1;
-      }
+        char **files_list = (char **)gc_alloc(sizeof(char *) * get_directory_child_count(dirpath));
+
+        int fileamount = 0;
+
+        struct dirent *de;
+
+        DIR *dr = opendir(dirpath);
+
+        if (dr == NULL)
+        {
+            return 0;
+        }
+
+        int i = 0;
+        while ((de = readdir(dr)) != NULL)
+        {
+            if (strcmp(de->d_name, ".") != 0 && strcmp(de->d_name, "..") != 0)
+            {
+                files_list[i] = de->d_name;
+                i += 1;
+            }
+        }
+        closedir(dr);
+
+        return files_list;
     }
-
-    closedir(dr);
-
-    return fileamount;
-  }
-
-  char **list_directory(char *dirpath)
-  {
-    char **files_list = (char **)gc_alloc(sizeof(char *) * get_directory_child_count(dirpath));
-
-    int fileamount = 0;
-
-    struct dirent *de;
-
-    DIR *dr = opendir(dirpath);
-
-    if (dr == NULL)
-    {
-      return 0;
-    }
-
-    int i = 0;
-    while ((de = readdir(dr)) != NULL)
-    {
-      if (strcmp(de->d_name, ".") != 0 && strcmp(de->d_name, "..") != 0)
-      {
-        files_list[i] = de->d_name;
-        i += 1;
-      }
-    }
-    closedir(dr);
-
-    return files_list;
-  }
 #else
-  int get_directory_child_count(char *sDir)
-  {
-    WIN32_FIND_DATA fdFile;
-    HANDLE hFind = NULL;
-
-    char sPath[2048];
-
-    sprintf(sPath, "%s\\*.*", sDir);
-
-    if ((hFind = FindFirstFile(sPath, &fdFile)) == INVALID_HANDLE_VALUE)
+    int get_directory_child_count(char *sDir)
     {
-      return 0;
+        WIN32_FIND_DATA fdFile;
+        HANDLE hFind = NULL;
+
+        char sPath[2048];
+
+        sprintf(sPath, "%s\\*.*", sDir);
+
+        if ((hFind = FindFirstFile(sPath, &fdFile)) == INVALID_HANDLE_VALUE)
+        {
+            return 0;
+        }
+
+        int childcount = 0;
+        do
+        {
+            if (strcmp(fdFile.cFileName, ".") != 0 && strcmp(fdFile.cFileName, "..") != 0)
+            {
+                childcount += 1;
+            }
+        } while (FindNextFile(hFind, &fdFile));
+
+        FindClose(hFind);
+
+        return childcount;
     }
 
-    int childcount = 0;
-    do
+    char **list_directory(char *sDir)
     {
-      if (strcmp(fdFile.cFileName, ".") != 0 && strcmp(fdFile.cFileName, "..") != 0)
-      {
-        childcount += 1;
-      }
-    } while (FindNextFile(hFind, &fdFile));
+        WIN32_FIND_DATA fdFile;
+        HANDLE hFind = NULL;
 
-    FindClose(hFind);
+        char sPath[2048];
 
-    return childcount;
-  }
+        sprintf(sPath, "%s\\*.*", sDir);
 
-  char **list_directory(char *sDir)
-  {
-    WIN32_FIND_DATA fdFile;
-    HANDLE hFind = NULL;
+        if ((hFind = FindFirstFile(sPath, &fdFile)) == INVALID_HANDLE_VALUE)
+        {
+            return 0;
+        }
 
-    char sPath[2048];
+        char **files_list = (char **)gc_alloc(sizeof(char *) * get_directory_child_count(sDir));
 
-    sprintf(sPath, "%s\\*.*", sDir);
+        int i = 0;
+        do
+        {
+            if (strcmp(fdFile.cFileName, ".") != 0 && strcmp(fdFile.cFileName, "..") != 0)
+            {
+                files_list[i] = sPath;
+                i += 1;
+            }
+        } while (FindNextFile(hFind, &fdFile));
 
-    if ((hFind = FindFirstFile(sPath, &fdFile)) == INVALID_HANDLE_VALUE)
-    {
-      return 0;
+        FindClose(hFind);
+
+        return files_list;
     }
 
-    char **files_list = (char **)gc_alloc(sizeof(char *) * get_directory_child_count(sDir));
-
-    int i = 0;
-    do
+    extern "C"
     {
-      if (strcmp(fdFile.cFileName, ".") != 0 && strcmp(fdFile.cFileName, "..") != 0)
-      {
-        files_list[i] = sPath;
-        i += 1;
-      }
-    } while (FindNextFile(hFind, &fdFile));
-
-    FindClose(hFind);
-
-    return files_list;
-  }
-
-  extern "C"
-  {
-    void windows_hide_console()
-    {
-      HWND console_window = GetConsoleWindow(); // window handle
-      ShowWindow(console_window, 0);
+        void windows_hide_console()
+        {
+            HWND console_window = GetConsoleWindow(); // window handle
+            ShowWindow(console_window, 0);
+        }
     }
-  }
 #endif
 }

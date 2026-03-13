@@ -7,10 +7,7 @@
 //    \ \__\    \ \_______\ \__\\ \__\ \_______\
 //     \|__|     \|_______|\|__| \|__|\|_______|
 //
-// Copyright 2025 Preston Brown. All Rights Reserved.
-
-// The naming standards for this file differ from the normal Peko naming standards 
-// since this file implements core functionality referenced from the compiler.
+// Copyright 2026 Preston Brown. All Rights Reserved.
 
 import ffi@"v0.0.1";
 
@@ -73,9 +70,12 @@ platform android {
 
 // these functions are called by the main entrypoint
 [external notrack] fn start_gc(stack_top: opaque);
-[external notrack] fn end_gc();
+[external notrack] fn stop_gc();
 
 [external] fn gc_alloc(size: int) => opaque;
+[external] fn gc_alloc_object(size: int) => opaque;
+[external variadic] fn create_object_header(offset_count: int) => opaque;
+[external] fn mark_global_root(root: opaque);
 
 /// Allocates an array of T with the provided length.
 ///
@@ -95,6 +95,7 @@ fn Allocate<T>(amount: int) => T[] {
 /// Exits the program with the provided exit code.
 /// @param exit_code The code to exit with
 [blockexit] fn Exit(exit_code: int) {
+    extern::stop_gc();
     extern::exit(exit_code);
 }
 
@@ -102,6 +103,7 @@ fn Allocate<T>(amount: int) => T[] {
 /// @param exit_message The message to error with
 [blockexit notrack] fn Exit(exit_message: string) {
     extern::printf("Error on line %d in file '%s': %s\n", extern::current_line, extern::current_file, exit_message);
+    extern::stop_gc();
     Exit(134);
 }
 
@@ -125,7 +127,7 @@ fn length(str: string) => int {
     return extern::strlen(str);
 }
 
-/// Gets the length of an integer (if the integer was a string).
+/// Gets the length of an integer (as if the integer was a string).
 /// 
 /// @param num the integer to check the length of
 fn length(num: int) => int {
@@ -142,7 +144,7 @@ fn length(num: int) => int {
     return len;
 }
 
-/// Gets the length of a float (if the float is a string).
+/// Gets the length of a float (as if the float is a string).
 /// 
 /// @param num the float to check the length of
 fn length(num: float) => int {
@@ -177,7 +179,7 @@ fn Modulus(lhs: float, rhs: float) => float {
 // ---  string functions  ---
 // --------------------------
 
-/// Wraps C fmodf and is utilized by the compiler for % operations.
+/// Adds the two strings together, returns a new string.
 /// 
 /// @param lhs the left hand side of the modulus
 /// @param rhs the right hand side of the modulus
